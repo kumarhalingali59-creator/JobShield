@@ -6,7 +6,10 @@ from alembic import context
 
 from app.core.config import settings
 from app.core.database import Base
-
+from app.models.company import Company
+from app.models.user import User
+from app.models.report import Report
+from app.models.evidence import Evidence
 
 config = context.config
 
