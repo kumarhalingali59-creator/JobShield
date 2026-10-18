@@ -1,46 +1,56 @@
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from sqlalchemy import select
-
-from app.core.database import SessionLocal
+from app.core.database import Base
 from app.models.company import Company
 
+from app.models.user import User  # noqa: F401
+from app.models.report import Report  # noqa: F401
+from app.models.risk_score import RiskScore  # noqa: F401
+from app.models.risk_signal import RiskSignal  # noqa: F401
 
 def test_company_database_connection():
-    assert SessionLocal is not None
+    test_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
 
-    db = SessionLocal()
+    TestSessionLocal = sessionmaker(
+        bind=test_engine,
+        autoflush=False,
+        autocommit=False,
+    )
 
     try:
-        company = Company(
-            name="JobShield Test Company",
-            legal_name="JobShield Test Company Private Limited",
-            description="Temporary database test record.",
-            website="https://example.com",
-        )
+        Base.metadata.create_all(bind=test_engine)
 
-        db.add(company)
-        db.commit()
-        db.refresh(company)
-
-        assert company.id is not None
-        assert company.name == "JobShield Test Company"
-
-        result = db.execute(
-            select(Company).where(
-                Company.id == company.id
+        with TestSessionLocal() as db:
+            company = Company(
+                name="JobShield Test Company",
+                legal_name="JobShield Test Company Private Limited",
+                description="Temporary database test record.",
+                website="https://example.com",
             )
-        )
 
-        saved_company = result.scalar_one()
+            db.add(company)
+            db.commit()
+            db.refresh(company)
 
-        assert saved_company.name == "JobShield Test Company"
+            assert company.id is not None
+            assert company.name == "JobShield Test Company"
 
-        db.delete(saved_company)
-        db.commit()
+            result = db.execute(
+                select(Company).where(
+                    Company.id == company.id
+                )
+            )
+
+            saved_company = result.scalar_one()
+            assert saved_company.name == "JobShield Test Company"
 
     finally:
-        db.close()
+        Base.metadata.drop_all(bind=test_engine)
+        test_engine.dispose()

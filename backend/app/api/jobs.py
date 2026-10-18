@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
+from app.core.db_errors import commit_or_raise
 from app.models.job import Job
 from app.schemas.job import (
     JobCreate,
@@ -45,7 +46,7 @@ def create_job(
     )
 
     db.add(job)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(job)
 
     return job

@@ -1,7 +1,9 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.db_errors import commit_or_raise
 from app.core.dependencies import get_db
 from app.engines.risk_rules import build_risk_signal
 from app.models.risk_signal import RiskSignal
@@ -32,7 +34,7 @@ def create_risk_assessment(
 
     if not target_type or not target_value:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Target type and target value cannot be blank.",
         )
 
@@ -43,7 +45,7 @@ def create_risk_assessment(
 
         if signal is None:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown risk signal type: {signal_type}",
             )
 
@@ -59,34 +61,47 @@ def create_risk_assessment(
             # Keep assessments UNKNOWN until trusted evaluation exists.
             has_sufficient_evidence=False,
         )
+
+        # The endpoint owns the transaction.
+        commit_or_raise(db)
+        db.refresh(record)
+
+        saved_signals = (
+            db.query(RiskSignal)
+            .filter(RiskSignal.risk_score_id == record.id)
+            .order_by(RiskSignal.id.asc())
+            .all()
+        )
+
+        return RiskAssessmentResponse(
+            id=record.id,
+            target_type=record.target_type,
+            target_value=record.target_value,
+            score=record.score,
+            risk_level=record.risk_level,
+            explanation=record.explanation,
+            signals=[
+                RiskSignalResponse(
+                    signal_type=signal.signal_type,
+                    severity=signal.severity,
+                    points=signal.points,
+                    description=signal.description,
+                    source=signal.source,
+                )
+                for signal in saved_signals
+            ],
+        )
+
     except ValueError as exc:
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
 
-    saved_signals = (
-        db.query(RiskSignal)
-        .filter(RiskSignal.risk_score_id == record.id)
-        .order_by(RiskSignal.id.asc())
-        .all()
-    )
-
-    return RiskAssessmentResponse(
-        id=record.id,
-        target_type=record.target_type,
-        target_value=record.target_value,
-        score=record.score,
-        risk_level=record.risk_level,
-        explanation=record.explanation,
-        signals=[
-            RiskSignalResponse(
-                signal_type=signal.signal_type,
-                severity=signal.severity,
-                points=signal.points,
-                description=signal.description,
-                source=signal.source,
-            )
-            for signal in saved_signals
-        ],
-    )
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The risk assessment could not be saved.",
+        ) from exc

@@ -15,7 +15,7 @@ def assess_and_save(
     signals: list[dict],
     has_sufficient_evidence: bool,
 ) -> RiskScore:
-    """Calculate an assessment and save it with its supporting signals."""
+    """Add an assessment and its signals to the caller's transaction."""
 
     normalized_signals = []
 
@@ -55,22 +55,14 @@ def assess_and_save(
     )
 
     db.add(record)
+    db.flush()
 
-    try:
-        db.flush()
-
-        for signal in normalized_signals:
-            db.add(
-                RiskSignal(
-                    risk_score_id=record.id,
-                    **signal,
-                )
+    for signal in normalized_signals:
+        db.add(
+            RiskSignal(
+                risk_score_id=record.id,
+                **signal,
             )
+        )
 
-        db.commit()
-        db.refresh(record)
-        return record
-
-    except Exception:
-        db.rollback()
-        raise
+    return record

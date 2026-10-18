@@ -1,24 +1,25 @@
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
+from app.core.db_errors import commit_or_raise
 from app.models.email import Email
 from app.schemas.email import (
     EmailCreate,
-    EmailListResponse,
     EmailResponse,
+    PublicEmailListResponse,
+    PublicEmailResponse,
 )
-
 
 router = APIRouter(
     prefix="/api/emails",
     tags=["Emails"],
 )
 
-
 @router.post(
     "",
-    response_model=EmailResponse,
+    response_model=PublicEmailResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_email(
@@ -43,7 +44,7 @@ def create_email(
     )
 
     db.add(email)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(email)
 
     return email
@@ -51,7 +52,7 @@ def create_email(
 
 @router.get(
     "",
-    response_model=EmailListResponse,
+    response_model=PublicEmailListResponse,
 )
 def list_emails(
     search: str | None = Query(default=None),
@@ -61,7 +62,7 @@ def list_emails(
 ):
     query = db.query(Email)
 
-    if search:
+    if search and search.strip():
         search_pattern = f"%{search.strip()}%"
         query = query.filter(
             Email.email_address.ilike(search_pattern)
@@ -77,7 +78,7 @@ def list_emails(
         .all()
     )
 
-    return EmailListResponse(
+    return PublicEmailListResponse(
         items=emails,
         total=total,
         limit=limit,
@@ -87,7 +88,7 @@ def list_emails(
 
 @router.get(
     "/{email_id}",
-    response_model=EmailResponse,
+    response_model=PublicEmailResponse,
 )
 def get_email(
     email_id: int,

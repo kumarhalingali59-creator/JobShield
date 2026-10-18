@@ -46,11 +46,10 @@ def get_risk_rule(signal_type: str) -> RiskRule | None:
     return RISK_RULES.get(signal_type)
 
 
-
 def build_risk_signal(
     signal_type: str,
     *,
-    source: str = "system",
+    source: str = "automated_detection",
 ) -> dict | None:
     """Build a database-ready signal from a registered rule."""
 
@@ -81,6 +80,7 @@ class EvidenceSource(StrEnum):
 def validate_evidence_source(source: str) -> bool:
     """Check whether an evidence source category is recognized."""
     return source in {item.value for item in EvidenceSource}
+
 
 def normalize_evidence_source(source: str) -> str:
     """Normalize and validate an evidence source category."""

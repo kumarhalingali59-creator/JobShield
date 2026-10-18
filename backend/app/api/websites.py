@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
+from app.core.db_errors import commit_or_raise
 from app.models.website import Website
 from app.schemas.website import (
     WebsiteCreate,
@@ -44,7 +45,7 @@ def create_website(
     )
 
     db.add(website)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(website)
 
     return website

@@ -4,6 +4,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
+from app.core.db_errors import commit_or_raise
 from app.models.company import Company
 from app.schemas.company import (
     CompanyCreate,
@@ -35,7 +36,7 @@ def create_company(
     )
 
     db.add(company)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(company)
 
     return company

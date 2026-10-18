@@ -1,5 +1,9 @@
 
 from app.services.risk_scoring import calculate_risk
+from app.engines.risk_rules import (
+    build_risk_signal,
+    normalize_evidence_source,
+)
 
 
 def test_insufficient_evidence_returns_unknown():
@@ -60,3 +64,18 @@ def test_score_is_capped_at_100():
 
     assert result.score == 100
     assert result.risk_level == "HIGH RISK"
+
+
+def test_generated_risk_signal_uses_valid_default_source():
+    signal = build_risk_signal("upfront_registration_fee")
+
+    assert signal is not None
+    assert signal["source"] == "automated_detection"
+    assert normalize_evidence_source(signal["source"]) == "automated_detection"
+
+
+def test_invalid_evidence_source_is_rejected():
+    import pytest
+
+    with pytest.raises(ValueError, match="Unsupported evidence source"):
+        normalize_evidence_source("system")

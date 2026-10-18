@@ -1,15 +1,17 @@
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
+from app.core.db_errors import commit_or_raise
 from app.models.recruiter import Recruiter
 from app.schemas.recruiter import (
+    PublicRecruiterListResponse,
+    PublicRecruiterResponse,
     RecruiterCreate,
-    RecruiterListResponse,
     RecruiterResponse,
 )
-
 
 router = APIRouter(
     prefix="/api/recruiters",
@@ -19,7 +21,7 @@ router = APIRouter(
 
 @router.post(
     "",
-    response_model=RecruiterResponse,
+    response_model=PublicRecruiterResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_recruiter(
@@ -36,7 +38,7 @@ def create_recruiter(
     )
 
     db.add(recruiter)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(recruiter)
 
     return recruiter
@@ -44,7 +46,7 @@ def create_recruiter(
 
 @router.get(
     "",
-    response_model=RecruiterListResponse,
+    response_model=PublicRecruiterListResponse,
 )
 def list_recruiters(
     search: str | None = Query(default=None),
@@ -54,7 +56,7 @@ def list_recruiters(
 ):
     query = db.query(Recruiter)
 
-    if search:
+    if search and search.strip():
         search_pattern = f"%{search.strip()}%"
         query = query.filter(
             or_(
@@ -75,7 +77,7 @@ def list_recruiters(
         .all()
     )
 
-    return RecruiterListResponse(
+    return PublicRecruiterListResponse(
         items=recruiters,
         total=total,
         limit=limit,
@@ -85,7 +87,7 @@ def list_recruiters(
 
 @router.get(
     "/{recruiter_id}",
-    response_model=RecruiterResponse,
+    response_model=PublicRecruiterResponse,
 )
 def get_recruiter(
     recruiter_id: int,

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
+from app.core.db_errors import commit_or_raise
 from app.models.phone_number import PhoneNumber
 from app.schemas.phone_number import (
     PhoneNumberCreate,
@@ -44,7 +45,7 @@ def create_phone_number(
     )
 
     db.add(phone_number)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(phone_number)
 
     return phone_number

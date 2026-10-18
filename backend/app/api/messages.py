@@ -1,14 +1,16 @@
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
+from app.core.db_errors import commit_or_raise
 from app.models.message import Message
 from app.schemas.message import (
     MessageCreate,
-    MessageListResponse,
     MessageResponse,
+    PublicMessageListResponse,
+    PublicMessageResponse,
 )
-
 
 router = APIRouter(
     prefix="/api/messages",
@@ -18,7 +20,7 @@ router = APIRouter(
 
 @router.post(
     "",
-    response_model=MessageResponse,
+    response_model=PublicMessageResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_message(
@@ -30,7 +32,7 @@ def create_message(
     )
 
     db.add(message)
-    db.commit()
+    commit_or_raise(db)
     db.refresh(message)
 
     return message
@@ -38,7 +40,7 @@ def create_message(
 
 @router.get(
     "",
-    response_model=MessageListResponse,
+    response_model=PublicMessageListResponse,
 )
 def list_messages(
     search: str | None = Query(default=None),
@@ -48,7 +50,7 @@ def list_messages(
 ):
     query = db.query(Message)
 
-    if search:
+    if search and search.strip():
         search_pattern = f"%{search.strip()}%"
         query = query.filter(
             Message.message_text.ilike(search_pattern)
@@ -64,7 +66,7 @@ def list_messages(
         .all()
     )
 
-    return MessageListResponse(
+    return PublicMessageListResponse(
         items=messages,
         total=total,
         limit=limit,
@@ -74,7 +76,7 @@ def list_messages(
 
 @router.get(
     "/{message_id}",
-    response_model=MessageResponse,
+    response_model=PublicMessageResponse,
 )
 def get_message(
     message_id: int,

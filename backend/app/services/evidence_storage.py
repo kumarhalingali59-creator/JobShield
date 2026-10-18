@@ -1,4 +1,5 @@
 
+import logging
 from pathlib import PurePosixPath
 from uuid import uuid4
 
@@ -8,8 +9,11 @@ from supabase import Client
 from app.core.storage import get_storage_client
 
 
+logger = logging.getLogger(__name__)
+
 BUCKET_NAME = "jobshield-evidence"
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+SIGNED_URL_TTL_SECONDS = 60
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg": ".jpg",
@@ -20,6 +24,40 @@ ALLOWED_CONTENT_TYPES = {
 }
 
 
+def _is_utf8_text(content: bytes) -> bool:
+    """Return whether content is valid UTF-8 text."""
+    try:
+        content.decode("utf-8-sig")
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
+def validate_file_content(content: bytes, content_type: str) -> None:
+    """Validate basic file signatures against the declared MIME type."""
+    signatures = {
+        "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+        "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": lambda data: (
+            len(data) >= 12
+            and data.startswith(b"RIFF")
+            and data[8:12] == b"WEBP"
+        ),
+        "application/pdf": lambda data: data.startswith(b"%PDF-"),
+        "text/plain": lambda data: (
+            b"\x00" not in data and _is_utf8_text(data)
+        ),
+    }
+
+    checker = signatures.get(content_type)
+
+    if checker is None or not checker(content):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="File contents do not match the supported file type.",
+        )
+
+
 def upload_evidence_file(
     report_id: int,
     file: UploadFile,
@@ -28,7 +66,7 @@ def upload_evidence_file(
 ) -> dict:
     if report_id <= 0:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid report ID.",
         )
 
@@ -67,6 +105,9 @@ def upload_evidence_file(
             detail="File size must not exceed 5 MB.",
         )
 
+    # Validate bytes before sending anything to Supabase.
+    validate_file_content(content, content_type)
+
     storage_path = (
         f"{report_id}/{uuid4().hex}"
         f"{ALLOWED_CONTENT_TYPES[content_type]}"
@@ -84,16 +125,8 @@ def upload_evidence_file(
             },
         )
     except Exception as exc:
-        print("Supabase storage upload error:", repr(exc))
-
-        response = getattr(exc, "response", None)
-        if response is not None:
-            print("Supabase response status:", response.status_code)
-            print(
-                "Supabase response content type:",
-                response.headers.get("content-type"),
-            )
-            print("Supabase response body:", response.text[:1000])
+        # Avoid printing potentially sensitive response bodies or headers.
+        logger.exception("Evidence upload to storage failed.")
 
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -106,11 +139,6 @@ def upload_evidence_file(
         "content_type": content_type,
         "file_size": len(content),
     }
-
-
-
-SIGNED_URL_TTL_SECONDS = 60
-
 
 
 def create_evidence_signed_url(
@@ -144,6 +172,8 @@ def create_evidence_signed_url(
             SIGNED_URL_TTL_SECONDS,
         )
     except Exception as exc:
+        logger.exception("Creating an evidence signed URL failed.")
+
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Could not create temporary evidence access.",
