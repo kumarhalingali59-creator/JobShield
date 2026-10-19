@@ -18,11 +18,7 @@ from app.core.storage import get_storage_client
 from app.models.evidence import Evidence
 from app.models.report import Report
 from app.models.user import User
-from app.schemas.evidence import (
-    EvidenceCreate,
-    EvidenceListResponse,
-    EvidenceResponse,
-)
+from app.schemas.evidence import EvidenceListResponse, EvidenceResponse
 from app.services.evidence_storage import (
     BUCKET_NAME,
     SIGNED_URL_TTL_SECONDS,
@@ -66,49 +62,6 @@ def get_owned_evidence(
         )
 
     get_owned_report(evidence.report_id, user_id, db)
-    return evidence
-
-
-@router.post(
-    "",
-    response_model=EvidenceResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_evidence(
-    evidence_data: EvidenceCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    get_owned_report(
-        evidence_data.report_id,
-        current_user.id,
-        db,
-    )
-
-    evidence = Evidence(**evidence_data.model_dump())
-    db.add(evidence)
-
-    try:
-        db.commit()
-        db.refresh(evidence)
-
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Evidence could not be registered. "
-                "The storage path may already exist."
-            ),
-        ) from exc
-
-    except SQLAlchemyError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while saving evidence.",
-        ) from exc
-
     return evidence
 
 

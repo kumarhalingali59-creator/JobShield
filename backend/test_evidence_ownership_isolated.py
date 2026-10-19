@@ -188,12 +188,12 @@ try:
                 "description": "Should not be saved.",
             },
         )
-        assert response.status_code == 404, (
+        assert response.status_code == 405, (
             response.status_code,
             response.text,
         )
         print(
-            "PASS: user A cannot attach evidence to user B's report (404)"
+            "PASS: direct evidence metadata creation is disabled (405)"
         )
 
         # 6. User A cannot list evidence belonging to user B's report.

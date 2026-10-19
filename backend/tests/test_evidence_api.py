@@ -172,73 +172,17 @@ def test_evidence_access_requires_report_ownership(monkeypatch):
         test_engine.dispose()
 
 
-def test_other_user_cannot_create_evidence_metadata():
-    Base.metadata.create_all(bind=test_engine)
-    app.dependency_overrides[get_db] = override_get_db
+def test_direct_evidence_metadata_creation_route_is_disabled():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/evidence",
+            json={
+                "report_id": 1,
+                "file_name": "unverified.txt",
+                "storage_path": "1/unverified-object",
+                "content_type": "text/plain",
+                "file_size": 4,
+            },
+        )
 
-    try:
-        with TestSessionLocal() as db:
-            owner = User(
-                email="metadata-owner@example.com",
-                password_hash="test-password-hash",
-                is_active=True,
-            )
-            other_user = User(
-                email="metadata-other@example.com",
-                password_hash="test-password-hash",
-                is_active=True,
-            )
-            db.add_all([owner, other_user])
-            db.commit()
-            db.refresh(owner)
-            db.refresh(other_user)
-
-            report = Report(
-                user_id=owner.id,
-                report_type="other",
-                target_value="METADATA-OWNERSHIP-TEST",
-                description="Test report for evidence metadata ownership.",
-                status="pending",
-            )
-            db.add(report)
-            db.commit()
-            db.refresh(report)
-
-            owner_id = owner.id
-            other_user_id = other_user.id
-            report_id = report.id
-
-        other_token = create_access_token(subject=str(other_user_id))
-
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/evidence",
-                headers={
-                    "Authorization": f"Bearer {other_token}"
-                },
-                json={
-                    "report_id": report_id,
-                    "file_name": "unauthorized.txt",
-                    "storage_path": f"{report_id}/unauthorized-object",
-                    "content_type": "text/plain",
-                    "file_size": 4,
-                    "description": "Unauthorized evidence metadata.",
-                },
-            )
-
-        # The endpoint must hide reports owned by another user.
-        assert response.status_code == 404, response.text
-
-        # No evidence metadata should have been created.
-        with TestSessionLocal() as db:
-            evidence_count = (
-                db.query(Evidence)
-                .filter(Evidence.report_id == report_id)
-                .count()
-            )
-            assert evidence_count == 0
-
-    finally:
-        app.dependency_overrides.pop(get_db, None)
-        Base.metadata.drop_all(bind=test_engine)
-        test_engine.dispose()
+    assert response.status_code == 405, response.text
