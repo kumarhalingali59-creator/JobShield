@@ -1,3 +1,4 @@
+
 from collections import defaultdict, deque
 from threading import Lock
 from time import monotonic
@@ -27,13 +28,17 @@ PATH_LIMITS = {
 class RequestRateLimitMiddleware(BaseHTTPMiddleware):
     """Simple per-process request limits for selected POST endpoints."""
 
-    def __init__(self, app):
+    def __init__(self, app, path_limits=None):
         super().__init__(app)
+        self.path_limits = (
+            PATH_LIMITS if path_limits is None else path_limits
+        )
         self.requests = defaultdict(deque)
         self.lock = Lock()
 
     async def dispatch(self, request: Request, call_next):
-        limit = PATH_LIMITS.get(request.url.path)
+        limit = self.path_limits.get(request.url.path)
+
         if request.method != "POST" or limit is None:
             return await call_next(request)
 
@@ -44,6 +49,7 @@ class RequestRateLimitMiddleware(BaseHTTPMiddleware):
 
         with self.lock:
             timestamps = self.requests[key]
+
             while timestamps and now - timestamps[0] >= WINDOW_SECONDS:
                 timestamps.popleft()
 
@@ -53,7 +59,9 @@ class RequestRateLimitMiddleware(BaseHTTPMiddleware):
                 )
                 return JSONResponse(
                     status_code=429,
-                    content={"detail": "Too many requests. Please try again later."},
+                    content={
+                        "detail": "Too many requests. Please try again later."
+                    },
                     headers={"Retry-After": str(retry_after)},
                 )
 
