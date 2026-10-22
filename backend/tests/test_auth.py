@@ -258,3 +258,40 @@ def test_login_rejects_empty_password(auth_routes_client):
     )
 
     assert response.status_code == 422
+
+
+def test_register_rate_limit_is_enforced(auth_routes_client):
+    payload = {
+        "email": "rate-limit-register@example.com",
+        "password": "Strong-Test-Password-2026!",
+    }
+
+    responses = [
+        auth_routes_client.post("/api/auth/register", json=payload)
+        for _ in range(6)
+    ]
+
+    assert [response.status_code for response in responses[:5]] == [
+        201, 409, 409, 409, 409
+    ]
+    assert responses[5].status_code == 429
+    assert "Retry-After" in responses[5].headers
+
+
+def test_login_rate_limit_is_enforced(auth_routes_client):
+    payload = {
+        "email": "unknown-rate-limit@example.com",
+        "password": "Strong-Test-Password-2026!",
+    }
+
+    responses = [
+        auth_routes_client.post("/api/auth/login", json=payload)
+        for _ in range(11)
+    ]
+
+    assert all(
+        response.status_code == 401
+        for response in responses[:10]
+    )
+    assert responses[10].status_code == 429
+    assert "Retry-After" in responses[10].headers

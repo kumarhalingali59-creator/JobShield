@@ -52,17 +52,19 @@ def list_companies(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Company)
+    # Only approved companies are publicly discoverable.
+    query = db.query(Company).filter(
+        Company.moderation_status == "approved"
+    )
 
-    if search:
-            search_pattern = f"%{search.strip()}%"
-            query = query.filter(
-                    or_(
-                        Company.name.ilike(search_pattern),
-                        Company.legal_name.ilike(search_pattern),
-                    )
-           )
-
+    if search and search.strip():
+        search_pattern = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Company.name.ilike(search_pattern),
+                Company.legal_name.ilike(search_pattern),
+            )
+        )
 
     total = query.count()
 
@@ -90,7 +92,14 @@ def get_company(
     company_id: int,
     db: Session = Depends(get_db),
 ):
-    company = db.get(Company, company_id)
+    company = (
+        db.query(Company)
+        .filter(
+            Company.id == company_id,
+            Company.moderation_status == "approved",
+        )
+        .first()
+    )
 
     if company is None:
         raise HTTPException(

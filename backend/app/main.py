@@ -30,6 +30,7 @@ from app.models.email import Email
 from app.models.website import Website
 from app.models.job import Job
 from app.models.message import Message
+from app.api.moderation import router as moderation_router
 
 
 limiter = Limiter(key_func=get_remote_address)
@@ -67,6 +68,7 @@ app.include_router(reports_router)
 app.include_router(evidence_router)
 app.include_router(risk_scores_router)
 app.include_router(auth_router)
+app.include_router(moderation_router)
 
 
 class SearchRequest(BaseModel):
@@ -94,8 +96,7 @@ class SearchRequest(BaseModel):
         return value
 
 
-# Search fields can contain sensitive information.
-# Only explicitly approved fields are returned to clients.
+# Only explicitly approved fields are returned to public search clients.
 SEARCH_CONFIG = {
     "companies": (
         Company,
@@ -164,6 +165,14 @@ SENSITIVE_SEARCH_TYPES = {
     "messages",
 }
 
+# Public search must not expose unapproved records from these models.
+MODERATED_SEARCH_TYPES = {
+    "companies",
+    "recruiters",
+    "emails",
+    "phone_numbers",
+}
+
 
 @app.get("/health")
 def health_check():
@@ -195,7 +204,7 @@ def search(
             ),
         )
 
-    # Escape SQL LIKE wildcard characters so user input is matched literally.
+    # Escape SQL LIKE wildcard characters so input is matched literally.
     escaped_query = (
         search_request.query.replace("\\", "\\\\")
         .replace("%", "\\%")
@@ -222,9 +231,18 @@ def search(
             for field in searchable_fields
         ]
 
+        # Keep public search limited to approved records.
+        # Other categories retain their existing behavior.
+        query = db.query(model)
+
+        if category in MODERATED_SEARCH_TYPES:
+            query = query.filter(model.moderation_status == "approved")
+
+        if filters:
+            query = query.filter(or_(*filters))
+
         records = (
-            db.query(model)
-            .filter(or_(*filters))
+            query
             .order_by(model.id.desc())
             .limit(10)
             .all()
@@ -263,10 +281,11 @@ def search(
                 }
             )
 
-    # Do not echo sensitive search terms back to the client.
+    # Never echo sensitive search terms back to the client.
     safe_query = (
         search_request.query
-        if search_type not in SENSITIVE_SEARCH_TYPES and search_type != "all"
+        if search_type not in SENSITIVE_SEARCH_TYPES
+        and search_type != "all"
         else search_type.replace("_", " ").title()
     )
 

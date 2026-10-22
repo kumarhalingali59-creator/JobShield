@@ -7,7 +7,6 @@ from app.core.db_errors import commit_or_raise
 from app.models.email import Email
 from app.schemas.email import (
     EmailCreate,
-    EmailResponse,
     PublicEmailListResponse,
     PublicEmailResponse,
 )
@@ -16,6 +15,7 @@ router = APIRouter(
     prefix="/api/emails",
     tags=["Emails"],
 )
+
 
 @router.post(
     "",
@@ -60,7 +60,9 @@ def list_emails(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Email)
+    query = db.query(Email).filter(
+        Email.moderation_status == "approved"
+    )
 
     if search and search.strip():
         search_pattern = f"%{search.strip()}%"
@@ -94,7 +96,14 @@ def get_email(
     email_id: int,
     db: Session = Depends(get_db),
 ):
-    email = db.get(Email, email_id)
+    email = (
+        db.query(Email)
+        .filter(
+            Email.id == email_id,
+            Email.moderation_status == "approved",
+        )
+        .first()
+    )
 
     if email is None:
         raise HTTPException(

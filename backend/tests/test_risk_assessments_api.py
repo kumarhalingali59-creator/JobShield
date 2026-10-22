@@ -1,7 +1,8 @@
-﻿from sqlalchemy import create_engine
+﻿
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
 
 from app.core.database import Base
 from app.core.dependencies import get_db
@@ -48,6 +49,11 @@ def test_blank_target_value_is_rejected():
             )
 
         assert response.status_code == 422
+
+        with TestSessionLocal() as db:
+            assert db.query(RiskScore).count() == 0
+            assert db.query(RiskSignal).count() == 0
+
     finally:
         app.dependency_overrides.pop(get_db, None)
         Base.metadata.drop_all(bind=test_engine)
@@ -74,6 +80,7 @@ def test_unknown_signal_type_is_rejected_without_saving():
         with TestSessionLocal() as db:
             assert db.query(RiskScore).count() == 0
             assert db.query(RiskSignal).count() == 0
+
     finally:
         app.dependency_overrides.pop(get_db, None)
         Base.metadata.drop_all(bind=test_engine)
@@ -98,19 +105,28 @@ def test_client_cannot_force_sufficient_evidence():
 
         assert response.status_code == 201, response.text
         data = response.json()
+
+        # The client-provided signal must not be trusted or saved.
         assert data["risk_level"] == "UNKNOWN"
         assert data["score"] is None
+        assert data["signals"] == []
 
         with TestSessionLocal() as db:
             saved = db.query(RiskScore).filter_by(
                 target_value="example.com",
                 target_type="website",
             ).one()
+
             assert saved.risk_level == "UNKNOWN"
             assert saved.score is None
-            assert db.query(RiskSignal).filter_by(
-                risk_score_id=saved.id
-            ).count() == 1
+
+            assert (
+                db.query(RiskSignal)
+                .filter_by(risk_score_id=saved.id)
+                .count()
+                == 0
+            )
+
     finally:
         app.dependency_overrides.pop(get_db, None)
         Base.metadata.drop_all(bind=test_engine)

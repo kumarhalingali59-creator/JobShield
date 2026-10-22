@@ -12,6 +12,10 @@ from app.schemas.risk_score import (
     RiskAssessmentResponse,
     RiskSignalResponse,
 )
+from app.services.automated_detector import (
+    analyze_target_for_osint_signals,
+    analyze_text_for_scam_signals,
+)
 from app.services.risk_engine import assess_and_save
 
 router = APIRouter(
@@ -38,31 +42,45 @@ def create_risk_assessment(
             detail="Target type and target value cannot be blank.",
         )
 
-    signals = []
-
+    # Validate supplied signal names for backward compatibility.
+    # Client-provided signals are never trusted as evidence or saved.
     for signal_type in request.signal_types:
-        signal = build_risk_signal(signal_type)
-
-        if signal is None:
+        if build_risk_signal(signal_type) is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown risk signal type: {signal_type}",
             )
 
-        signals.append(signal)
+    text_target_types = {
+        "message",
+        "job description",
+        "job_description",
+        "recruitment text",
+        "recruitment message",
+    }
 
     try:
+        # Generate risk signals from backend detection only.
+        if target_type in text_target_types:
+            signals = analyze_text_for_scam_signals(target_value)
+        else:
+            signals = analyze_target_for_osint_signals(
+                target_type,
+                target_value,
+            )
+
         record = assess_and_save(
             db,
             target_type=target_type,
             target_value=target_value,
             signals=signals,
-            # Client input cannot establish evidence sufficiency.
-            # Keep assessments UNKNOWN until trusted evaluation exists.
+            # Client input cannot establish verified evidence.
             has_sufficient_evidence=False,
+            # Allow a preliminary score for backend-detected signals.
+            preliminary=True,
         )
 
-        # The endpoint owns the transaction.
+        # This endpoint owns the database transaction.
         commit_or_raise(db)
         db.refresh(record)
 

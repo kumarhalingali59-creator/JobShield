@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.request_rate_limit import RequestRateLimitMiddleware
+import app.core.request_rate_limit as rate_limit_module
 
 
 def create_test_app(limit: int = 2) -> FastAPI:
@@ -74,3 +75,29 @@ def test_get_requests_bypass_post_rate_limit():
     ]
 
     assert all(response.status_code == 200 for response in responses)
+
+
+def test_rate_limit_resets_after_window_expires(monkeypatch):
+    current_time = [1000.0]
+
+    monkeypatch.setattr(
+        rate_limit_module,
+        "monotonic",
+        lambda: current_time[0],
+    )
+
+    client = TestClient(create_test_app(limit=2))
+
+    first = client.post("/api/auth/login")
+    second = client.post("/api/auth/login")
+    blocked = client.post("/api/auth/login")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert blocked.status_code == 429
+
+    # Move time forward beyond the 60-second window.
+    current_time[0] += 61
+
+    after_expiry = client.post("/api/auth/login")
+    assert after_expiry.status_code == 200

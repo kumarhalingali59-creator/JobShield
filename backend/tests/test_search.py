@@ -49,7 +49,14 @@ def test_search_rejects_empty_input(client, payload):
 def test_search_returns_empty_results_when_no_matches(client):
     test_client, db = client
 
-    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+    (
+        db.query.return_value
+        .filter.return_value
+        .filter.return_value
+        .order_by.return_value
+        .limit.return_value
+        .all.return_value
+    ) = []
 
     response = test_client.post(
         "/api/search",
@@ -65,7 +72,14 @@ def test_search_returns_empty_results_when_no_matches(client):
 def test_search_accepts_singular_alias(client):
     test_client, db = client
 
-    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+    (
+        db.query.return_value
+        .filter.return_value
+        .filter.return_value
+        .order_by.return_value
+        .limit.return_value
+        .all.return_value
+    ) = []
 
     response = test_client.post(
         "/api/search",
@@ -89,9 +103,14 @@ def test_recruiter_search_does_not_expose_contact_details(client):
     recruiter.profile_url = "https://example.com/profile"
     recruiter.description = "Recruitment profile"
 
-    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-        recruiter
-    ]
+    (
+        db.query.return_value
+        .filter.return_value
+        .filter.return_value
+        .order_by.return_value
+        .limit.return_value
+        .all.return_value
+    ) = [recruiter]
 
     response = test_client.post(
         "/api/search",
@@ -116,9 +135,14 @@ def test_email_search_does_not_expose_email_address(client):
     email.email_address = "private@example.com"
     email.description = "Suspicious recruitment email"
 
-    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-        email
-    ]
+    (
+        db.query.return_value
+        .filter.return_value
+        .filter.return_value
+        .order_by.return_value
+        .limit.return_value
+        .all.return_value
+    ) = [email]
 
     response = test_client.post(
         "/api/search",
@@ -141,9 +165,13 @@ def test_message_search_does_not_expose_raw_message(client):
     message.id = 9
     message.message_text = "Send your password to scammer@example.com"
 
-    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-        message
-    ]
+    (
+        db.query.return_value
+        .filter.return_value
+        .order_by.return_value
+        .limit.return_value
+        .all.return_value
+    ) = [message]
 
     response = test_client.post(
         "/api/search",
@@ -159,9 +187,13 @@ def test_message_search_does_not_expose_raw_message(client):
     assert message.message_text not in response.text
     assert "scammer@example.com" not in response.text
 
+
 def test_all_search_does_not_echo_sensitive_query(client):
     test_client, db = client
 
+    # "all" searches multiple categories. Configure every category
+    # to return an empty result regardless of its filter chain.
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
     db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
 
     sensitive_query = "private.person@example.com"

@@ -96,6 +96,17 @@ type RiskAssessment = {
   }[];
 };
 
+function normalizeJobUrl(url: string): string {
+  return url.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+function isExactJobUrlMatch(
+  searchedUrl: string,
+  storedUrl: string
+): boolean {
+  return normalizeJobUrl(searchedUrl) === normalizeJobUrl(storedUrl);
+}
+
 type SearchResponse = {
   status: string;
   search_type: string;
@@ -296,6 +307,22 @@ export default function Home() {
 
         const data = await response.json();
 
+        // Assess the matched company name when the search identifies one
+        // unambiguous company. This avoids showing an assessment for a broad
+        // search fragment (for example, "JobShield") beside a more specific
+        // company result (for example, "JobShield Test Company"). If the
+        // search has no result or multiple ambiguous results, retain the query.
+        const companies: Company[] = Array.isArray(data.items)
+          ? data.items
+          : [];
+        const normalizedQuery = query.trim().toLocaleLowerCase();
+        const exactCompanyMatch = companies.find(
+          (company) => company.name.trim().toLocaleLowerCase() === normalizedQuery
+        );
+        const assessmentTarget =
+          exactCompanyMatch?.name ??
+          (companies.length === 1 ? companies[0].name : query.trim());
+
         // The search and risk assessment are separate API operations.
         // Assessment failures must not hide successful search results.
         let riskAssessment: RiskAssessment | undefined;
@@ -309,7 +336,7 @@ export default function Home() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 target_type: "company",
-                target_value: query.trim(),
+                target_value: assessmentTarget,
                 signal_types: [],
                 has_sufficient_evidence: false,
               }),
@@ -1122,29 +1149,61 @@ export default function Home() {
                 </div>
               ))}
 
-              {result.jobs?.map((job) => (
-                <div
-                  key={job.id}
-                  className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4"
-                >
-                  <div className="text-lg font-semibold text-white">
-                    {job.title || "Job Listing"}
-                  </div>
-                  {job.company_name && (
-                    <div className="mt-1 text-sm text-slate-400">
-                      Company: {job.company_name}
+              {result.jobs?.map((job) => {
+                const exactMatch = isExactJobUrlMatch(
+                  result.query,
+                  job.job_url
+                );
+
+                return (
+                  <div
+                    key={job.id}
+                    className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4"
+                  >
+                    <div className="text-lg font-semibold text-white">
+                      {job.title || "Job Listing"}
                     </div>
-                  )}
-                  <div className="mt-3 break-all text-sm text-blue-400">
-                    Job URL: {job.job_url}
+
+                    {job.company_name && (
+                      <div className="mt-1 text-sm text-slate-400">
+                        Company: {job.company_name}
+                      </div>
+                    )}
+
+                    <div
+                      className={`mt-3 rounded-lg border p-3 text-sm ${
+                        exactMatch
+                          ? "border-emerald-800 bg-emerald-950/30 text-emerald-300"
+                          : "border-amber-800 bg-amber-950/30 text-amber-300"
+                      }`}
+                      role="status"
+                    >
+                      <div className="font-semibold">
+                        {exactMatch
+                          ? "Exact URL match"
+                          : "Similar URL match"}
+                      </div>
+
+                      {!exactMatch && (
+                        <p className="mt-1 leading-5">
+                          This listing has a different URL from your search.
+                          Verify that it is the same job before trusting the result.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-3 break-all text-sm text-blue-400">
+                      Job URL: {job.job_url}
+                    </div>
+
+                    {job.description && (
+                      <p className="mt-3 text-sm leading-6 text-slate-300">
+                        {job.description}
+                      </p>
+                    )}
                   </div>
-                  {job.description && (
-                    <p className="mt-3 text-sm leading-6 text-slate-300">
-                      {job.description}
-                    </p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
 
               {result.messages?.map((message) => (
                 <div

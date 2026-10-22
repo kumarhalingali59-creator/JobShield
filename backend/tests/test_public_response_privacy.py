@@ -35,6 +35,7 @@ def client():
                 "description": "Recruitment profile",
                 "created_at": "2026-01-01T00:00:00",
                 "updated_at": "2026-01-01T00:00:00",
+                "moderation_status": "approved",
             },
             ("email", "phone"),
             7,
@@ -47,6 +48,7 @@ def client():
                 "description": "Suspicious recruitment email",
                 "created_at": "2026-01-01T00:00:00",
                 "updated_at": "2026-01-01T00:00:00",
+                "moderation_status": "approved",
             },
             ("email_address",),
             8,
@@ -81,18 +83,49 @@ def test_public_get_endpoints_hide_sensitive_fields(
         setattr(record, field, value)
 
     if detail:
-        db.get.return_value = record
+        if endpoint in ("/api/recruiters", "/api/emails"):
+            # Moderated detail endpoints use filtered database queries.
+            db.query.return_value.filter.return_value.first.return_value = (
+                record
+            )
+        else:
+            db.get.return_value = record
 
         response = test_client.get(f"{endpoint}/{record_id}")
 
         assert response.status_code == 200, response.text
         returned_records = [response.json()]
+
     else:
         query = db.query.return_value
-        query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
-            record
-        ]
-        query.count.return_value = 1
+
+        if endpoint == "/api/recruiters":
+            # Recruiter listing applies moderation and optional search filters.
+            query.filter.return_value.count.return_value = 1
+            (
+                query.filter.return_value
+                .order_by.return_value
+                .offset.return_value
+                .limit.return_value
+                .all.return_value
+            ) = [record]
+
+        elif endpoint == "/api/emails":
+            # Email listing applies the approved-status filter and pagination.
+            query.filter.return_value.count.return_value = 1
+            (
+                query.filter.return_value
+                .order_by.return_value
+                .offset.return_value
+                .limit.return_value
+                .all.return_value
+            ) = [record]
+
+        else:
+            query.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+                record
+            ]
+            query.count.return_value = 1
 
         response = test_client.get(endpoint)
 
@@ -181,8 +214,7 @@ def test_public_create_endpoints_hide_sensitive_fields(
     db.add.return_value = None
     db.commit.return_value = None
 
-    # The endpoint creates its own SQLAlchemy model instance.
-    # Populate that actual instance when the endpoint refreshes it.
+    # Populate the actual SQLAlchemy model instance on refresh.
     def populate_created_record(instance):
         instance.id = model_fields["id"]
         instance.created_at = datetime.fromisoformat(
@@ -200,11 +232,10 @@ def test_public_create_endpoints_hide_sensitive_fields(
 
     response_data = response.json()
 
-    # Sensitive values must not be included in the public response.
+    # Sensitive values must not be exposed in the response.
     for sensitive_value in sensitive_values:
         assert sensitive_value not in response.text
 
-    # Private fields must not appear in the public response object.
     for field in (
         "email",
         "phone",

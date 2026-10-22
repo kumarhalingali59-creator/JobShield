@@ -186,3 +186,96 @@ def test_direct_evidence_metadata_creation_route_is_disabled():
         )
 
     assert response.status_code == 405, response.text
+
+def test_evidence_upload_resets_report_and_records_audit_log(monkeypatch):
+    from app.models.report_moderation_log import ReportModerationLog
+
+    Base.metadata.create_all(bind=test_engine)
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        with TestSessionLocal() as db:
+            owner = User(
+                email="evidence-resubmit-owner@example.com",
+                password_hash="test-password-hash",
+                is_active=True,
+                is_admin=False,
+            )
+            db.add(owner)
+            db.commit()
+            db.refresh(owner)
+
+            report = Report(
+                user_id=owner.id,
+                report_type="other",
+                target_value="EVIDENCE-RESUBMIT-TEST",
+                description="Additional evidence is required.",
+                status="needs_evidence",
+            )
+            db.add(report)
+            db.commit()
+            db.refresh(report)
+
+            owner_id = owner.id
+            report_id = report.id
+
+        # Simulate successful storage upload; no real cloud upload occurs.
+        monkeypatch.setattr(
+            "app.api.evidence.upload_evidence_file",
+            lambda report_id, file: {
+                "file_name": "supporting.txt",
+                "storage_path": f"{report_id}/test-evidence-object.txt",
+                "content_type": "text/plain",
+                "file_size": 25,
+            },
+        )
+
+        token = create_access_token(subject=str(owner_id))
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/evidence/upload",
+                headers={"Authorization": f"Bearer {token}"},
+                data={
+                    "report_id": str(report_id),
+                    "description": "Supporting job information",
+                },
+                files={
+                    "file": (
+                        "supporting.txt",
+                        b"Supporting evidence text",
+                        "text/plain",
+                    )
+                },
+            )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["file_name"] == "supporting.txt"
+
+        with TestSessionLocal() as db:
+            saved_report = db.get(Report, report_id)
+            assert saved_report is not None
+            assert saved_report.status == "pending"
+
+            evidence_items = (
+                db.query(Evidence)
+                .filter(Evidence.report_id == report_id)
+                .all()
+            )
+            assert len(evidence_items) == 1
+
+            audit_logs = (
+                db.query(ReportModerationLog)
+                .filter(ReportModerationLog.report_id == report_id)
+                .all()
+            )
+
+            assert len(audit_logs) == 1
+            assert audit_logs[0].actor_user_id == owner_id
+            assert audit_logs[0].actor_type == "user"
+            assert audit_logs[0].action == "evidence_submitted"
+
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        Base.metadata.drop_all(bind=test_engine)
+        test_engine.dispose()

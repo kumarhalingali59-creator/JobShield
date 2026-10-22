@@ -17,6 +17,7 @@ from app.core.dependencies import get_db
 from app.core.storage import get_storage_client
 from app.models.evidence import Evidence
 from app.models.report import Report
+from app.models.report_moderation_log import ReportModerationLog
 from app.models.user import User
 from app.schemas.evidence import EvidenceListResponse, EvidenceResponse
 from app.services.evidence_storage import (
@@ -77,7 +78,7 @@ def upload_evidence(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    get_owned_report(report_id, current_user.id, db)
+    report = get_owned_report(report_id, current_user.id, db)
 
     # Upload only after verifying report ownership.
     uploaded = upload_evidence_file(report_id, file)
@@ -96,6 +97,19 @@ def upload_evidence(
     )
 
     db.add(evidence)
+
+    # Evidence metadata, report status, and audit log are committed together.
+    if report.status == "needs_evidence":
+        report.status = "pending"
+        db.add(
+            ReportModerationLog(
+                report_id=report.id,
+                actor_user_id=current_user.id,
+                actor_type="user",
+                action="evidence_submitted",
+                notes="User submitted additional evidence.",
+            )
+        )
 
     try:
         db.commit()
@@ -201,9 +215,9 @@ def download_evidence(
     )
 
     signed_url = create_evidence_signed_url(
-    evidence.storage_path,
-    report_id=evidence.report_id,
-)
+        evidence.storage_path,
+        report_id=evidence.report_id,
+    )
 
     return {
         "download_url": signed_url,

@@ -268,3 +268,45 @@ def test_jwt_secret_accepts_valid_length_value():
     )
 
     assert len(configured.JWT_SECRET) >= 32
+
+def test_me_rejects_token_signed_with_wrong_secret(auth_client):
+    client, active_user_id, _ = auth_client
+    token = jwt.encode(
+        {
+            "sub": str(active_user_id),
+            "iat": datetime.now(timezone.utc),
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "type": "access",
+        },
+        "wrong-test-secret-that-is-at-least-32-chars",
+        algorithm="HS256",
+    )
+
+    response = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_me_rejects_token_without_type_claim(auth_client):
+    client, active_user_id, _ = auth_client
+    now = datetime.now(timezone.utc)
+
+    token = jwt.encode(
+        {
+            "sub": str(active_user_id),
+            "iat": now,
+            "exp": now + timedelta(minutes=5),
+        },
+        settings.JWT_SECRET,
+        algorithm="HS256",
+    )
+
+    response = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401

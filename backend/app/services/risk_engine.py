@@ -14,6 +14,7 @@ def assess_and_save(
     target_value: str,
     signals: list[dict],
     has_sufficient_evidence: bool,
+    preliminary: bool = False,
 ) -> RiskScore:
     """Add an assessment and its signals to the caller's transaction."""
 
@@ -42,9 +43,10 @@ def assess_and_save(
         )
 
     assessment = calculate_risk(
-        [signal["points"] for signal in normalized_signals],
-        has_sufficient_evidence=has_sufficient_evidence,
-    )
+    [signal["points"] for signal in normalized_signals],
+    has_sufficient_evidence=has_sufficient_evidence,
+    preliminary=preliminary,
+)
 
     record = RiskScore(
         target_type=target_type.strip().lower(),

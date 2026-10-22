@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -61,9 +62,11 @@ def list_phone_numbers(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(PhoneNumber)
+    query = db.query(PhoneNumber).filter(
+        PhoneNumber.moderation_status == "approved"
+    )
 
-    if search:
+    if search and search.strip():
         search_pattern = f"%{search.strip()}%"
         query = query.filter(
             PhoneNumber.phone_number.ilike(search_pattern)
@@ -95,7 +98,14 @@ def get_phone_number(
     phone_number_id: int,
     db: Session = Depends(get_db),
 ):
-    phone_number = db.get(PhoneNumber, phone_number_id)
+    phone_number = (
+        db.query(PhoneNumber)
+        .filter(
+            PhoneNumber.id == phone_number_id,
+            PhoneNumber.moderation_status == "approved",
+        )
+        .first()
+    )
 
     if phone_number is None:
         raise HTTPException(

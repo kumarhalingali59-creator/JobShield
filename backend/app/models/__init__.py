@@ -9,3 +9,4 @@ from app.models.report import Report
 from app.models.evidence import Evidence
 from app.models.risk_score import RiskScore
 from app.models.risk_signal import RiskSignal
+from app.models.report_moderation_log import ReportModerationLog

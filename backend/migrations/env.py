@@ -1,15 +1,17 @@
+
 from logging.config import fileConfig
 
 from sqlalchemy import pool
-
 from alembic import context
 
 from app.core.config import settings
 from app.core.database import Base
-from app.models.company import Company
-from app.models.user import User
-from app.models.report import Report
-from app.models.evidence import Evidence
+
+# Register all models defined in app.models.__init__.
+import app.models  # noqa: F401
+
+# User is not currently imported by app.models.__init__.
+from app.models.user import User  # noqa: F401
 
 config = context.config
 

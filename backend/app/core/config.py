@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     DATABASE_URL: str = ""
+    ADMIN_EMAIL: str = ""
     JWT_SECRET: str = Field(min_length=32)
 
     @field_validator("JWT_SECRET")

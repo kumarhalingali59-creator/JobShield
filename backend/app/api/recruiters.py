@@ -10,7 +10,6 @@ from app.schemas.recruiter import (
     PublicRecruiterListResponse,
     PublicRecruiterResponse,
     RecruiterCreate,
-    RecruiterResponse,
 )
 
 router = APIRouter(
@@ -54,7 +53,10 @@ def list_recruiters(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Recruiter)
+    # Only approved recruiters are publicly discoverable.
+    query = db.query(Recruiter).filter(
+        Recruiter.moderation_status == "approved"
+    )
 
     if search and search.strip():
         search_pattern = f"%{search.strip()}%"
@@ -93,7 +95,14 @@ def get_recruiter(
     recruiter_id: int,
     db: Session = Depends(get_db),
 ):
-    recruiter = db.get(Recruiter, recruiter_id)
+    recruiter = (
+        db.query(Recruiter)
+        .filter(
+            Recruiter.id == recruiter_id,
+            Recruiter.moderation_status == "approved",
+        )
+        .first()
+    )
 
     if recruiter is None:
         raise HTTPException(

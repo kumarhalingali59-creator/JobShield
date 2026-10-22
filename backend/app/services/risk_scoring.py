@@ -13,10 +13,17 @@ def calculate_risk(
     signal_points: list[int],
     *,
     has_sufficient_evidence: bool,
+    preliminary: bool = False,
 ) -> RiskAssessment:
-    """Calculate a transparent preliminary risk assessment."""
+    """Calculate a transparent risk assessment.
 
-    if not has_sufficient_evidence or not signal_points:
+    Preliminary scoring is permitted for detected automated indicators.
+    It does not mean that the target or allegation has been verified.
+    """
+
+    if not signal_points or (
+        not has_sufficient_evidence and not preliminary
+    ):
         return RiskAssessment(
             score=None,
             risk_level="UNKNOWN",
@@ -34,12 +41,15 @@ def calculate_risk(
     else:
         risk_level = "HIGH RISK"
 
+    explanation = (
+        f"Preliminary score: {score}/100, based on "
+        f"{len(signal_points)} risk signal(s). "
+        "These indicators are not proof of fraud. "
+        "Review the individual signals and their sources."
+    )
+
     return RiskAssessment(
         score=score,
         risk_level=risk_level,
-        explanation=(
-            f"Preliminary score: {score}/100, based on "
-            f"{len(signal_points)} risk signal(s). "
-            "Review the individual signals and their sources."
-        ),
+        explanation=explanation,
     )
